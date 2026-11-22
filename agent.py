@@ -13,6 +13,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from urllib.request import HTTPRedirectHandler, build_opener
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
