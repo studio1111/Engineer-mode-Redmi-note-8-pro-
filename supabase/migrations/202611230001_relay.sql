@@ -20,7 +20,8 @@ create table if not exists private.relay_commands (
   claimed_at timestamptz,
   completed_at timestamptz,
   result jsonb,
-  check (expires_at > created_at)
+  check (expires_at > created_at),
+  check (expires_at <= created_at + interval '10 minutes')
 );
 
 create index if not exists relay_commands_pending_idx
@@ -31,8 +32,6 @@ alter table private.relay_devices enable row level security;
 alter table private.relay_commands enable row level security;
 revoke all on schema private from public, anon, authenticated;
 revoke all on all tables in schema private from public, anon, authenticated, service_role;
-grant usage on schema private to service_role;
-grant select, insert, update, delete on all tables in schema private to service_role;
 
 create or replace function public.relay_auth_device(p_device_id uuid, p_token_sha256 text)
 returns boolean
@@ -55,6 +54,10 @@ security definer
 set search_path = ''
 as $$
 begin
+  update private.relay_commands
+    set status = 'expired'
+    where device_id = p_device_id and status = 'pending' and expires_at <= now();
+
   update private.relay_devices
     set last_seen_at = now()
     where id = p_device_id and status = 'active';
