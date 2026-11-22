@@ -1,42 +1,77 @@
 # Redmi Engineer Lab
 
-Read-only-first diagnostics for Xiaomi Redmi Note 8 Pro (begonia / MediaTek MTK6785), designed to run locally in Termux.
+Read-only-first diagnostics and an authenticated command-polling agent for Xiaomi Redmi Note 8 Pro (begonia / MediaTek MTK6785), designed for Termux + Shizuku Rish.
 
-## Safety model
+## Current implementation
 
-- Collection only: no modem, RF, NVRAM, NVDATA, calibration, IMEI, band, or WorldMode writes.
-- Tasks are selected from a fixed allowlist; arbitrary shell commands are not accepted.
-- Output is bounded and common subscriber/device identifiers are redacted before reports are written.
-- Shizuku/Rish is used only for explicitly listed read-only Android diagnostics.
-- No credentials, tokens, private keys, or device dumps belong in this repository.
+- Fixed task allowlist: inventory, telephony, radio, connectivity, source audit.
+- No arbitrary shell command API.
+- No modem, RF, NVRAM/NVDATA, calibration, IMEI, band, or WorldMode writes.
+- Subscriber identifiers are redacted before local report persistence and relay upload.
+- Optional authenticated relay uses per-device random bearer credentials, SHA-256 token verification, short-lived queue items, one-time claiming, and completion binding to the enrolled device.
+- Relay tables live in a non-exposed `private` schema; only server-side service role can invoke narrowly scoped RPC functions.
+- Local bearer token is generated and stored on the phone with restrictive file permissions; only device UUID and token hash are shared for enrollment.
 
-## Current status
+## Security warning
 
-This repository starts with the local diagnostics agent and its safety tests. The secure command relay is a separate phase: it must use authenticated, expiring, replay-resistant commands and must not be enabled until the server-side authorization and device enrollment flow have been reviewed.
+This repository is currently public. Make it private before adding operational details or any deployment secrets. Never commit local relay credentials, Supabase secret/service-role keys, raw radio logs, or unredacted device reports.
 
-## Requirements
+## One-time Termux setup
 
-- Android 11 or compatible Android
-- Termux with Python 3
-- Optional: Shizuku and the Rish shell bridge for privileged read-only snapshots
-
-## Run
+Run this single command in Termux:
 
 ```sh
+pkg install -y curl && bash -c "$(curl -fsSL https://raw.githubusercontent.com/studio1111/Engineer-mode-Redmi-note-8-pro-/main/bootstrap-termux.sh)"
+```
+
+The script installs Git/Python, clones or fast-forward-updates the repository, compiles the agent, runs unit tests, checks Rish access, and creates local relay credentials once. It does not change modem settings.
+
+The script prints an enrollment JSON containing `device_id` and `token_sha256`. Send that JSON to the assistant for registration. The actual bearer token remains in:
+
+```
+~/.config/redmi-engineer-lab/relay.json
+```
+
+Do not share that file or its `token` value.
+
+## Local diagnostics
+
+```sh
+cd ~/RedmiEngineerLab
 python agent.py --task inventory
 python agent.py --task telephony
 python agent.py --task radio
+python agent.py --task connectivity
+python agent.py --task source
 python -m unittest discover -s tests -v
 ```
 
-Reports are written under `reports/`. Review and redact them before sharing.
+Reports are stored under `reports/` with restrictive file permissions. Review them before sharing.
 
-## Roadmap
+## Relay architecture
 
-1. Local read-only inventory and diagnostic snapshots.
-2. Source analysis of EngineerMode Java/Smali/XML, including WorldMode validation and BandSelect paths.
-3. Secure relay protocol and device enrollment.
-4. ChatGPT-accessible integration, audit trail, and approval-gated repair plans.
-5. End-to-end verification on the physical device.
+1. ChatGPT queues an allowlisted task in the private database using its authenticated Supabase connector.
+2. The Termux agent polls the Edge Function over outbound HTTPS.
+3. The Edge Function verifies the device token hash and claims at most one unexpired task.
+4. The agent validates the task again against its local allowlist, executes only the matching fixed collector, redacts the result, and submits the report.
+5. The Edge Function accepts completion only for the same enrolled device and a currently claimed, unexpired command.
 
-A green CI result validates repository code only; it does not prove that modem behavior or device-specific operations are safe.
+The Edge Function requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as server-side environment variables. Never place these in Termux or GitHub.
+
+## Backend deployment
+
+After a Supabase project is selected and ready:
+
+1. Apply `supabase/migrations/202611230001_relay.sql`.
+2. Deploy `supabase/functions/device-relay/index.ts` as `device-relay` with JWT verification disabled because the function performs its own per-device bearer-token authentication.
+3. Verify the database functions and Edge Function logs.
+4. Register the device using only the enrollment UUID and SHA-256 hash.
+5. Queue a harmless `inventory` task and verify the complete round trip.
+
+## Safety boundaries
+
+- The relay accepts only named read-only tasks; it never accepts shell text or arbitrary arguments.
+- Commands expire after two minutes and cannot be claimed twice.
+- The server stores only the token hash; the phone stores the bearer token.
+- WorldMode, band selection, RF, NVRAM/NVDATA, calibration, and identity changes remain approval-gated and are not implemented in the agent.
+- A green CI run proves code-level checks only; it does not establish safe modem behavior or a working physical-device connection.
