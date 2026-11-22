@@ -22,7 +22,7 @@ TIMEOUT_SECONDS = 25
 # Fixed commands only. Do not add modem/RF/NVRAM write commands here.
 TASK_COMMANDS = {
     "inventory": [
-        "rish", "-c",
+        str(Path.home() / "rish"), "-c",
         "printf 'ANDROID_RELEASE='; getprop ro.build.version.release; "
         "printf 'DEVICE='; getprop ro.product.device; "
         "printf 'MODEL='; getprop ro.product.model; "
@@ -30,12 +30,12 @@ TASK_COMMANDS = {
         "printf '\\nRIL_PACKAGES\\n'; pm list packages | grep -iE 'mediatek.(ims|telephony|atci|engineermode)'"
     ],
     "telephony": [
-        "rish", "-c",
+        str(Path.home() / "rish"), "-c",
         "dumpsys telephony.registry | grep -iE "
         "'mServiceState|mSignalStrength|mDataConnectionState|mDataNetworkType|mVoiceNetworkType|mCellIdentity|mCellInfo'"
     ],
     "radio": [
-        "rish", "-c",
+        str(Path.home() / "rish"), "-c",
         "logcat -b radio -d -t 3000 | grep -iE "
         "'ATCI|RILMUXD|RilClient|WorldMode|BandSelect|LTE|EDGE|GSM|WCDMA|ServiceState|DataRegState|IMS|error|fail|denied' | tail -n 500"
     ],
