@@ -44,7 +44,7 @@ TASK_COMMANDS = {
     "telephony": [
         RISH, "-c",
         "dumpsys telephony.registry | grep -iE "
-        "'mServiceState|mSignalStrength|mDataConnectionState|mDataNetworkType|mVoiceNetworkType|mCellIdentity|mCellInfo'"
+        "'mServiceState|mSignalStrength|mDataConnectionState|mDataNetworkType|mVoiceNetworkType'"
     ],
     "radio": [
         RISH, "-c",
@@ -54,7 +54,7 @@ TASK_COMMANDS = {
     "connectivity": [
         RISH, "-c",
         "printf '===== CONNECTIVITY =====\\n'; dumpsys connectivity | "
-        "grep -iE 'NetworkAgentInfo|TRANSPORT_CELLULAR|NetworkCapabilities|LinkProperties|mNetworkInfo' | head -n 220; "
+        "grep -iE 'NetworkAgentInfo|TRANSPORT_CELLULAR|NetworkCapabilities|mNetworkInfo' | head -n 220; "
         "printf '\\n===== ACTIVE NETWORK =====\\n'; dumpsys netstats | head -n 80"
     ],
     "source": [
@@ -79,6 +79,8 @@ SENSITIVE_PATTERNS = [
     re.compile(r"(?i)\bICCID\s*[:=]?\s*[0-9]{18,22}\b"),
     re.compile(r"(?i)\b(?:MEID|ESN)\s*[:=]?\s*[0-9A-F-]{8,18}\b"),
     re.compile(r"(?i)\b(?:phone|subscriber)\s*(?:number|msisdn)\s*[:=]?\s*\+?[0-9][0-9 -]{6,18}"),
+    re.compile(r"(?i)\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+"),
+    re.compile(r"(?<![0-9])(?:[0-9]{15}|[0-9]{19,22})(?![0-9])"),
 ]
 
 
