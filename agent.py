@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Read-only diagnostic collector for Redmi Engineer Lab.
-
-No arbitrary command execution and no modem configuration writes are implemented.
-"""
+"""Read-only Redmi Engineer Lab collector and authenticated command-polling agent."""
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import re
+import secrets
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -18,47 +22,67 @@ ROOT = Path(__file__).resolve().parent
 REPORT_DIR = ROOT / "reports"
 MAX_OUTPUT = 48_000
 TIMEOUT_SECONDS = 25
+POLL_SECONDS = 12
+ALLOWED_TASKS = {"inventory", "telephony", "radio", "source", "connectivity"}
+RISH_ENV = {
+    "RISH_APPLICATION_ID": "com.termux",
+    "MANAGER_APPLICATION_ID": "moe.shizuku.privileged.api",
+}
+RISH = str(Path.home() / "rish")
 
-# Fixed commands only. Do not add modem/RF/NVRAM write commands here.
 TASK_COMMANDS = {
     "inventory": [
-        str(Path.home() / "rish"), "-c",
+        RISH, "-c",
         "printf 'ANDROID_RELEASE='; getprop ro.build.version.release; "
         "printf 'DEVICE='; getprop ro.product.device; "
         "printf 'MODEL='; getprop ro.product.model; "
         "printf '\\nENGINEERMODE_PACKAGE\\n'; pm path com.mediatek.engineermode; "
-        "printf '\\nRIL_PACKAGES\\n'; pm list packages | grep -iE 'mediatek.(ims|telephony|atci|engineermode)'"
+        "printf '\\nENGINEERMODE_COMPONENTS\\n'; dumpsys package com.mediatek.engineermode | "
+        "grep -iE 'Activity|Service|Receiver|Provider|permission' | head -n 160; "
+        "printf '\\nMEDIATEK_PACKAGES\\n'; pm list packages | grep -i mediatek | head -n 120"
     ],
     "telephony": [
-        str(Path.home() / "rish"), "-c",
+        RISH, "-c",
         "dumpsys telephony.registry | grep -iE "
         "'mServiceState|mSignalStrength|mDataConnectionState|mDataNetworkType|mVoiceNetworkType|mCellIdentity|mCellInfo'"
     ],
     "radio": [
-        str(Path.home() / "rish"), "-c",
+        RISH, "-c",
         "logcat -b radio -d -t 3000 | grep -iE "
         "'ATCI|RILMUXD|RilClient|WorldMode|BandSelect|LTE|EDGE|GSM|WCDMA|ServiceState|DataRegState|IMS|error|fail|denied' | tail -n 500"
     ],
+    "connectivity": [
+        RISH, "-c",
+        "printf '===== CONNECTIVITY =====\\n'; dumpsys connectivity | "
+        "grep -iE 'NetworkAgentInfo|TRANSPORT_CELLULAR|NetworkCapabilities|LinkProperties|mNetworkInfo' | head -n 220; "
+        "printf '\\n===== ACTIVE NETWORK =====\\n'; dumpsys netstats | head -n 80"
+    ],
     "source": [
         "sh", "-c",
-        "if [ -d \"$HOME/em_decoded/sources/com/mediatek/engineermode\" ]; then "
-        "grep -RniE 'storeModemType|rebootModem|setModemType|WorldMode|modemType|world.mode|setWorldMode|BandSelect' "
-        "\"$HOME/em_decoded/sources/com/mediatek/engineermode\" 2>/dev/null | head -n 500; "
-        "else echo 'SOURCE_NOT_FOUND: expected ~/em_decoded/sources/com/mediatek/engineermode'; fi"
+        "base=\"$HOME/em_decoded\"; eng=\"$base/sources/com/mediatek/engineermode\"; "
+        "if [ ! -d \"$eng\" ]; then echo 'SOURCE_NOT_FOUND: expected ~/em_decoded/sources/com/mediatek/engineermode'; exit 0; fi; "
+        "echo '===== WORLD/BAND SOURCE FILES ====='; "
+        "find \"$eng\" -type f | grep -iE 'world.?mode|band.?select|modem|radio' | head -n 160; "
+        "echo '===== WORLD/BAND VALIDATION AND CALLS ====='; "
+        "grep -RniE -C 5 'storeModemType|rebootModem|setModemType|WorldMode|modemType|world.mode|setWorldMode|BandSelect|setBandModeGsm|mBtnSet|mBtnReset' \"$eng\" 2>/dev/null | head -n 1200; "
+        "echo '===== MANIFEST PERMISSIONS/COMPONENTS ====='; "
+        "if [ -f \"$base/AndroidManifest.xml\" ]; then grep -niE 'uses-permission|activity|service|receiver|provider|exported|permission' \"$base/AndroidManifest.xml\" | head -n 300; "
+        "else echo 'DECODED_MANIFEST_NOT_FOUND'; fi; "
+        "echo '===== ENGINEERMODE RESOURCES ====='; "
+        "if [ -d \"$base/res\" ]; then find \"$base/res\" -type f | grep -iE 'world|band|modem|radio' | head -n 300; fi"
     ],
 }
 
 SENSITIVE_PATTERNS = [
-    re.compile(r"(?i)\bIMEI\s*[:=]?\s*[0-9]{14,16}\b"),
-    re.compile(r"(?i)\bIMSI\s*[:=]?\s*[0-9]{14,16}\b"),
-    re.compile(r"(?i)\bICCID\s*[:=]?\s*[0-9]{18,22}\b"),
-    re.compile(r"(?i)\b(?:MEID|ESN)\s*[:=]?\s*[0-9A-F-]{8,18}\b"),
-    re.compile(r"(?i)\b(?:phone|subscriber)\s*(?:number|msisdn)\s*[:=]?\s*\+?[0-9][0-9 -]{6,18}"),
+    re.compile(r"(?i)\\bIMEI\\s*[:=]?\\s*[0-9]{14,16}\\b"),
+    re.compile(r"(?i)\\bIMSI\\s*[:=]?\\s*[0-9]{14,16}\\b"),
+    re.compile(r"(?i)\\bICCID\\s*[:=]?\\s*[0-9]{18,22}\\b"),
+    re.compile(r"(?i)\\b(?:MEID|ESN)\\s*[:=]?\\s*[0-9A-F-]{8,18}\\b"),
+    re.compile(r"(?i)\\b(?:phone|subscriber)\\s*(?:number|msisdn)\\s*[:=]?\\s*\\+?[0-9][0-9 -]{6,18}"),
 ]
 
 
 def redact(value: str) -> str:
-    """Remove common subscriber identifiers before any report is persisted."""
     result = value
     for pattern in SENSITIVE_PATTERNS:
         result = pattern.sub("[REDACTED]", result)
@@ -66,7 +90,7 @@ def redact(value: str) -> str:
 
 
 def validate_task(task: str) -> bool:
-    return task in TASK_COMMANDS
+    return task in ALLOWED_TASKS and task in TASK_COMMANDS
 
 
 def build_report(task: str, status: str, output: str) -> dict[str, Any]:
@@ -84,14 +108,16 @@ def build_report(task: str, status: str, output: str) -> dict[str, Any]:
 def collect(task: str) -> tuple[str, str]:
     if not validate_task(task):
         raise ValueError("Task is not in the read-only allowlist")
-    command = TASK_COMMANDS[task]
+    env = os.environ.copy()
+    env.update(RISH_ENV)
     try:
         completed = subprocess.run(
-            command,
+            TASK_COMMANDS[task],
             capture_output=True,
             text=True,
             timeout=TIMEOUT_SECONDS,
             check=False,
+            env=env,
         )
     except FileNotFoundError as exc:
         return "unavailable", f"Required executable not found: {exc.filename}"
@@ -99,26 +125,159 @@ def collect(task: str) -> tuple[str, str]:
         return "timeout", f"Collection exceeded {TIMEOUT_SECONDS} seconds"
     output = (completed.stdout or "") + (completed.stderr or "")
     if completed.returncode != 0:
-        return "error", f"exit_code={completed.returncode}\n{output}"
+        return "error", f"exit_code={completed.returncode}\\n{output}"
     return "ok", output or "(no output)"
+
+
+def config_path() -> Path:
+    return Path.home() / ".config" / "redmi-engineer-lab" / "relay.json"
+
+
+def enroll() -> int:
+    """Create local-only device credentials; only the UUID and hash are shared."""
+    path = config_path()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    device_id = str(uuid.uuid4())
+    token = secrets.token_urlsafe(48)
+    payload = {
+        "device_id": device_id,
+        "token": token,
+        "poll_seconds": POLL_SECONDS,
+    }
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(payload), encoding="utf-8")
+    try:
+        temp.chmod(0o600)
+    except OSError:
+        pass
+    temp.replace(path)
+    try:
+        path.chmod(0o600)
+        path.parent.chmod(0o700)
+    except OSError:
+        pass
+    print(json.dumps({
+        "device_id": device_id,
+        "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
+        "label": "Redmi Note 8 Pro",
+    }, indent=2))
+    print("IMPORTANT: token remains local and is never printed. Share only the JSON above.")
+    return 0
+
+
+def load_relay_config() -> dict[str, Any]:
+    path = config_path()
+    if not path.is_file():
+        raise RuntimeError("No local relay credentials. Run: python agent.py --enroll")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data.get("device_id"), str) or not isinstance(data.get("token"), str):
+        raise RuntimeError("Relay credentials file is invalid")
+    return data
+
+
+def request_json(url: str, method: str, device_id: str, token: str,
+                 payload: dict[str, Any] | None = None) -> tuple[int, Any]:
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        method=method,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Device-Id": device_id,
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            raw = response.read(65537)
+            if len(raw) > 65536:
+                raise RuntimeError("Relay response exceeded size limit")
+            return response.status, json.loads(raw) if raw else None
+    except urllib.error.HTTPError as exc:
+        raw = exc.read(4096).decode("utf-8", errors="replace")
+        if exc.code == 204:
+            return 204, None
+        raise RuntimeError(f"Relay HTTP {exc.code}: {redact(raw)}") from None
+
+
+def relay_loop(relay_url: str) -> int:
+    cfg = load_relay_config()
+    base = relay_url.rstrip("/")
+    poll_url = base + "/poll"
+    complete_url = base + "/complete"
+    device_id, token = cfg["device_id"], cfg["token"]
+    print("Relay agent started. Read-only tasks only. Press Ctrl+C to stop.")
+    while True:
+        try:
+            status, data = request_json(poll_url, "GET", device_id, token)
+            if status == 204 or not data:
+                time.sleep(POLL_SECONDS)
+                continue
+            command = data.get("command") if isinstance(data, dict) else None
+            if not isinstance(command, dict):
+                time.sleep(POLL_SECONDS)
+                continue
+            command_id = command.get("command_id")
+            task = command.get("task")
+            expires_at = command.get("expires_at")
+            if not isinstance(command_id, str) or not validate_task(task):
+                print("Rejected malformed or non-allowlisted relay command.")
+                time.sleep(POLL_SECONDS)
+                continue
+            if isinstance(expires_at, str):
+                try:
+                    deadline = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                    if deadline <= datetime.now(timezone.utc):
+                        raise ValueError("expired")
+                except ValueError:
+                    print("Rejected expired/invalid relay command.")
+                    time.sleep(POLL_SECONDS)
+                    continue
+            result_status, output = collect(task)
+            report = build_report(task, result_status, output)
+            request_json(
+                complete_url, "POST", device_id, token,
+                {"command_id": command_id, "status": result_status,
+                 "result": {"report": report}},
+            )
+            print(f"completed task={task} status={result_status}")
+        except KeyboardInterrupt:
+            print("\\nRelay agent stopped.")
+            return 0
+        except Exception as exc:
+            # Do not print credentials, request headers, or raw device output.
+            print(f"relay_error={type(exc).__name__}: {redact(str(exc))[:300]}")
+            time.sleep(POLL_SECONDS)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--task", required=True, choices=sorted(TASK_COMMANDS))
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--task", choices=sorted(ALLOWED_TASKS))
+    group.add_argument("--enroll", action="store_true")
+    group.add_argument("--relay", action="store_true")
+    parser.add_argument("--relay-url", help="Supabase Edge Function base URL ending in /functions/v1/device-relay")
     parser.add_argument("--stdout", action="store_true", help="Print JSON instead of writing a report")
     args = parser.parse_args(argv)
+
+    if args.enroll:
+        return enroll()
+    if args.relay:
+        if not args.relay_url:
+            parser.error("--relay requires --relay-url")
+        return relay_loop(args.relay_url)
 
     status, output = collect(args.task)
     report = build_report(args.task, status, output)
     encoded = json.dumps(report, ensure_ascii=False, indent=2)
-
     if args.stdout:
         print(encoded)
     else:
         REPORT_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
         path = REPORT_DIR / f"{args.task}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
-        path.write_text(encoded + "\n", encoding="utf-8")
+        path.write_text(encoded + "\\n", encoding="utf-8")
         try:
             path.chmod(0o600)
         except OSError:
