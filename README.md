@@ -58,6 +58,23 @@ Reports are stored under `reports/` with restrictive file permissions. Review th
 
 The Edge Function requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as server-side environment variables. Never place these in Termux or GitHub.
 
+## Start and stop the relay
+
+After the backend is deployed and the device is enrolled:
+
+```sh
+cd ~/RedmiEngineerLab
+bash start-relay.sh https://PROJECT_REF.supabase.co/functions/v1/device-relay
+```
+
+Stop it with:
+
+```sh
+bash stop-relay.sh
+```
+
+The relay runs as a Termux background process. Android battery management can still suspend or kill Termux; unrestricted battery usage and a suitable Termux:Boot setup may be needed for persistent operation. The agent does not modify system power settings.
+
 ## Backend deployment
 
 After a Supabase project is selected and ready:
