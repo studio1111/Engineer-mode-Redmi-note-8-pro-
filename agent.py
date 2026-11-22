@@ -177,6 +177,14 @@ def load_relay_config() -> dict[str, Any]:
     return data
 
 
+class NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+HTTP_OPENER = build_opener(NoRedirectHandler)
+
+
 def request_json(url: str, method: str, device_id: str, token: str,
                  payload: dict[str, Any] | None = None) -> tuple[int, Any]:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -192,7 +200,7 @@ def request_json(url: str, method: str, device_id: str, token: str,
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with HTTP_OPENER.open(request, timeout=20) as response:
             raw = response.read(65537)
             if len(raw) > 65536:
                 raise RuntimeError("Relay response exceeded size limit")
@@ -224,7 +232,7 @@ def relay_loop(relay_url: str) -> int:
             command_id = command.get("command_id")
             task = command.get("task")
             expires_at = command.get("expires_at")
-            if not isinstance(command_id, str) or not validate_task(task):
+            if not isinstance(command_id, str) or not isinstance(task, str) or not validate_task(task):
                 print("Rejected malformed or non-allowlisted relay command.")
                 time.sleep(POLL_SECONDS)
                 continue
