@@ -61,16 +61,19 @@ TASK_COMMANDS = {
     "source": [
         "sh", "-c",
         "base=\"$HOME/em_decoded\"; eng=\"$base/sources/com/mediatek/engineermode\"; "
-        "if [ ! -d \"$eng\" ]; then echo 'SOURCE_NOT_FOUND: expected ~/em_decoded/sources/com/mediatek/engineermode'; exit 0; fi; "
+        "if [ ! -d \"$eng\" ] && [ ! -d \"$base/smali/com/mediatek/engineermode\" ]; then "
+        "echo 'SOURCE_NOT_FOUND: expected JADX sources or apktool smali under ~/em_decoded'; exit 0; fi; "
         "echo '===== WORLD/BAND SOURCE FILES ====='; "
-        "find \"$eng\" -type f | grep -iE 'world.?mode|band.?select|modem|radio' | head -n 160; "
-        "echo '===== WORLD/BAND VALIDATION AND CALLS ====='; "
-        "grep -RniE -C 5 'storeModemType|rebootModem|setModemType|WorldMode|modemType|world.mode|setWorldMode|BandSelect|setBandModeGsm|mBtnSet|mBtnReset' \"$eng\" 2>/dev/null | head -n 1200; "
+        "find \"$base\" -type f | grep -iE 'world.?mode|band.?select|modem|radio' | head -n 220; "
+        "echo '===== WORLD/BAND VALIDATION, LISTENERS AND MODEM CALLS ====='; "
+        "grep -RniE -C 5 'storeModemType|rebootModem|setModemType|WorldMode|modemType|world.mode|setWorldMode|BandSelect|setBandModeGsm|mBtnSet|mBtnReset|setOnClickListener|onClick|ATCI|sendAtCommand' "
+        "\"$base/sources/com/mediatek/engineermode\" \"$base/smali\" \"$base/smali_classes2\" 2>/dev/null | head -n 1400; "
         "echo '===== MANIFEST PERMISSIONS/COMPONENTS ====='; "
-        "if [ -f \"$base/AndroidManifest.xml\" ]; then grep -niE 'uses-permission|activity|service|receiver|provider|exported|permission' \"$base/AndroidManifest.xml\" | head -n 300; "
-        "else echo 'DECODED_MANIFEST_NOT_FOUND'; fi; "
+        "for manifest in \"$base/AndroidManifest.xml\" \"$base/resources/AndroidManifest.xml\"; do "
+        "if [ -f \"$manifest\" ]; then grep -niE 'uses-permission|activity|service|receiver|provider|exported|permission' \"$manifest\" | head -n 300; fi; done; "
         "echo '===== ENGINEERMODE RESOURCES ====='; "
-        "if [ -d \"$base/res\" ]; then find \"$base/res\" -type f | grep -iE 'world|band|modem|radio' | head -n 300; fi"
+        "for resdir in \"$base/res\" \"$base/resources/res\"; do "
+        "if [ -d \"$resdir\" ]; then find \"$resdir\" -type f | grep -iE 'world|band|modem|radio' | head -n 300; fi; done"
     ],
 }
 
