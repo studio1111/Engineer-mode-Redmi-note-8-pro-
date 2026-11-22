@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent
 REPORT_DIR = ROOT / "reports"
 MAX_OUTPUT = 48_000
 TIMEOUT_SECONDS = 25
-POLL_SECONDS = 12
+POLL_SECONDS = 20
 ALLOWED_TASKS = {"inventory", "telephony", "radio", "source", "connectivity"}
 RISH_ENV = {
     "RISH_APPLICATION_ID": "com.termux",
