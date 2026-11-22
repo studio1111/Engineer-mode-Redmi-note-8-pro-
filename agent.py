@@ -53,7 +53,7 @@ SENSITIVE_PATTERNS = [
     re.compile(r"(?i)\bIMSI\s*[:=]?\s*[0-9]{14,16}\b"),
     re.compile(r"(?i)\bICCID\s*[:=]?\s*[0-9]{18,22}\b"),
     re.compile(r"(?i)\b(?:MEID|ESN)\s*[:=]?\s*[0-9A-F-]{8,18}\b"),
-    re.compile(r"(?i)\b(?:phone|subscriber)\s*(?:number|msisdn)\s*[:=]?\s*\\+?[0-9][0-9 -]{6,18}"),
+    re.compile(r"(?i)\b(?:phone|subscriber)\s*(?:number|msisdn)\s*[:=]?\s*\+?[0-9][0-9 -]{6,18}"),
 ]
 
 
