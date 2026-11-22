@@ -1,0 +1,4 @@
+project_id = "redmi-engineer-lab"
+
+[functions.device-relay]
+verify_jwt = false
