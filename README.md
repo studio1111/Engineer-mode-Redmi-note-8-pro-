@@ -4,7 +4,7 @@ Read-only-first diagnostics and an authenticated command-polling agent for Xiaom
 
 ## Current implementation
 
-- Fixed task allowlist: inventory, telephony, radio, connectivity, source audit.
+- Fixed task allowlist: inventory, telephony, radio, connectivity, broad source audit, and six focused read-only EngineerMode audits (World Mode, band selection, RIL/AT, network capabilities, component inventory, safety/persistence).
 - No arbitrary shell command API.
 - No modem, RF, NVRAM/NVDATA, calibration, IMEI, band, or WorldMode writes.
 - Subscriber identifiers are redacted before local report persistence and relay upload.
@@ -43,10 +43,16 @@ python agent.py --task telephony
 python agent.py --task radio
 python agent.py --task connectivity
 python agent.py --task source
+python agent.py --task worldmode_audit
+python agent.py --task band_audit
+python agent.py --task ril_audit
+python agent.py --task network_audit
+python agent.py --task component_audit
+python agent.py --task safety_audit
 python -m unittest discover -s tests -v
 ```
 
-Reports are stored under `reports/` with restrictive file permissions. Review them before sharing.
+Reports are stored under `reports/` with restrictive file permissions. Schema v2 reports include `output_length` and an explicit `truncated` flag; `status=ok` does not mean the report was complete. Review them before sharing.
 
 ## Relay architecture
 
