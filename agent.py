@@ -21,10 +21,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 REPORT_DIR = ROOT / "reports"
-MAX_OUTPUT = 48_000
+MAX_OUTPUT = 24_000
 TIMEOUT_SECONDS = 25
 POLL_SECONDS = 20
-ALLOWED_TASKS = {"inventory", "telephony", "radio", "source", "connectivity", "engineermode_audit"}
+ALLOWED_TASKS = {"inventory", "telephony", "radio", "source", "connectivity", "engineermode_audit", "worldmode_audit", "band_audit", "ril_audit", "network_audit", "component_audit", "safety_audit"}
 RISH_ENV = {
     "RISH_APPLICATION_ID": "com.termux",
     "MANAGER_APPLICATION_ID": "moe.shizuku.privileged.api",
@@ -98,6 +98,12 @@ TASK_COMMANDS = {
         "for resdir in \"$base/res\" \"$base/resources/res\"; do "
         "if [ -d \"$resdir\" ]; then find \"$resdir\" -type f | grep -iE 'world|band|modem|radio' | head -n 300; fi; done"
     ],
+    "worldmode_audit": ["sh","-c","base=\"$HOME/em_decoded\"; eng=\"$base/sources/com/mediatek/engineermode\"; echo '=== WORLD MODE UTIL ==='; f=\"$eng/WorldModeUtil.java\"; if [ -f \"$f\" ]; then grep -nE -C 8 'setWorldModeWithBand|setWorldMode\\(|checkWmCapability|getWorldModeId|isNrSupported|isC2kSupport|reloadModemType|storeModemType|rebootModem|PROPERTY_RAT_CONFIG|Invalid world mode' \"$f\"; else echo \"MISSING $f\"; fi; echo '=== WORLD MODE ACTIVITY ==='; f=\"$eng/worldmode/WorldModeActivity.java\"; if [ -f \"$f\" ]; then grep -nE -C 8 'onClick|mMode|mOldMode|queryCurrentBandModeAndSetNewWorldMode|setWorldModeWithBand|ACTION_WORLD_MODE_CHANGED|ACTION_SET_RADIO_CAPABILITY_DONE|Waiting rf reboot|is6m\\(|IS_NR_SUPPORT|mBandMode' \"$f\"; else echo \"MISSING $f\"; fi; echo '=== MODEM CATEGORY ==='; f=\"$eng/ModemCategory.java\"; if [ -f \"$f\" ]; then grep -nE -C 4 'isCdma|isLteSupport|isTddSupport|isWcdmaSupport|isGsmSupport|CheckViceSim|ModemType' \"$f\"; fi"],
+    "band_audit": ["sh","-c","base=\"$HOME/em_decoded\"; eng=\"$base/sources/com/mediatek/engineermode\"; for rel in bandselect/BandSelect.java bandselect/BandModeContent.java bandselect/BandModeSimSelect.java; do f=\"$eng/$rel\"; echo \"=== $rel ===\"; if [ -f \"$f\" ]; then wc -l \"$f\"; grep -nE -C 6 'initGsmArray|initLteArray|initNRArray|initCdmaArray|showBandModeGsm|showBandModeNR|showBandModeCdma|setBandModeGsm|setBandModeNR|setBandModeCdma|getValFromBoxGsm|getValFromBoxNR|getValFromBoxCdma|saveDefaultValue|Reset|mIs.*Valid|GSM_BAND_BIT|LTE|NR|CDMA|QUERY_CURRENT|SET_COMMAND|SAME_COMMAND|DESTRILD' \"$f\"; else echo \"MISSING $f\"; fi; done"],
+    "ril_audit": ["sh","-c","base=\"$HOME/em_decoded\"; eng=\"$base/sources/com/mediatek/engineermode\"; echo '=== RIL / AT IMPLEMENTATIONS ==='; for rel in EmRadioHidl.java MtkRadioResponseBase.java MtkRadioIndication.java aospradio/EmRadioHidlAosp.java aospradio/RadioResponse.java aospradio/RadioIndication.java RadioStateManager.java; do f=\"$eng/$rel\"; echo \"--- $rel\"; if [ -f \"$f\" ]; then grep -nE -C 5 'invokeOemRilRequest|sendAtCommand|sendATCommand|ATCI|AsyncResult|Message|Handler|on.*Response|response|setRadioPower|rebootModem|WorldMode|Band' \"$f\"; else echo \"MISSING $f\"; fi; done; echo '=== RIL CALL-SITE INDEX ==='; grep -RniE 'invokeOemRilRequestStringsEm|sendAtCommand|sendATCommand|DESTRILD:C2K|STATUS_SYNC_PREFIX' \"$eng\" 2>/dev/null | head -n 260"],
+    "network_audit": ["sh","-c","base=\"$HOME/em_decoded\"; eng=\"$base/sources/com/mediatek/engineermode\"; echo '=== MODEM / RAT CAPABILITY SOURCES ==='; find \"$base/sources\" -type f \\( -iname '*RatConfiguration*' -o -iname '*ModemCategory*' -o -iname '*FeatureSupport*' -o -iname '*ModemSwitch*' \\) -print 2>/dev/null; echo '=== CAPABILITY LOGIC ==='; grep -RniE -C 5 'isNrSupported|isLteSupport|isCdma|isTddSupport|isWcdmaSupport|isGsmSupport|RatConfiguration|PROPERTY_RAT_CONFIG|vendor.ril.active.md|worldmode' \"$eng\" \"$base/sources/com/mediatek/internal/telephony\" 2>/dev/null | head -n 700; echo '=== DEVICE RADIO PROPERTIES (READ ONLY) ==='; for p in ro.product.device ro.board.platform ro.hardware ro.vendor.mediatek.platform vendor.ril.active.md vendor.ril.nw.worldmode.activemode; do printf '%s=' \"$p\"; getprop \"$p\"; done"],
+    "component_audit": ["sh","-c","base=\"$HOME/em_decoded\"; echo '=== MANIFEST COMPONENTS / PERMISSIONS ==='; for f in \"$base/AndroidManifest.xml\" \"$base/resources/AndroidManifest.xml\"; do if [ -f \"$f\" ]; then echo \"--- $f\"; grep -niE 'uses-permission|<activity|<service|<receiver|<provider|exported|permission|intent-filter' \"$f\"; fi; done; echo '=== SOURCE COMPONENT INVENTORY ==='; eng=\"$base/sources/com/mediatek/engineermode\"; grep -RniE 'class [A-Za-z0-9_]+ (extends Activity|extends Service|extends BroadcastReceiver|extends Fragment)|class .*Activity|class .*Service|class .*Receiver' \"$eng\" 2>/dev/null | head -n 420; echo '=== WORLD/BAND RESOURCE FILES ==='; find \"$base/resources/res\" \"$base/res\" -type f 2>/dev/null | grep -iE 'world|band|modem|radio' | head -n 220"],
+    "safety_audit": ["sh","-c","base=\"$HOME/em_decoded\"; eng=\"$base/sources/com/mediatek/engineermode\"; echo '=== ALL MODEM / RADIO MUTATION CALLSITES (SOURCE REVIEW ONLY) ==='; grep -RniE -C 5 'setWorldMode\\(|setWorldModeWithBand|storeModemType|reloadModemType|rebootModem|setBandModeGsm|setBandModeNR|setBandModeCdma|SET_COMMAND|invokeOemRilRequestStringsEm|setRadioPower|MASTER_CLEAR|wipeData|factoryReset|nvram|nvdata|nvcfg|IMEI' \"$eng\" 2>/dev/null | head -n 1200; echo '=== PERSISTENCE / RESET CALLSITES ==='; grep -RniE -C 4 'SharedPreferences|commit\\(|apply\\(|putInt\\(|putLong\\(|putString\\(|remove\\(|clear\\(' \"$eng/worldmode\" \"$eng/bandselect\" \"$eng/worldphone\" 2>/dev/null | head -n 500"],
 }
 
 SENSITIVE_PATTERNS = [
@@ -123,14 +129,17 @@ def validate_task(task: str) -> bool:
 
 
 def build_report(task: str, status: str, output: str) -> dict[str, Any]:
+    cleaned = redact(output)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "device_profile": "redmi-note-8-pro-begonia",
         "task": task,
         "status": status,
         "read_only": True,
-        "output": redact(output)[:MAX_OUTPUT],
+        "output_length": len(cleaned),
+        "truncated": len(cleaned) > MAX_OUTPUT,
+        "output": cleaned[:MAX_OUTPUT],
     }
 
 
