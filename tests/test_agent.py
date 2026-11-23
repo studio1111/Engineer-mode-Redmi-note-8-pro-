@@ -1,6 +1,6 @@
 import unittest
 
-from agent import ALLOWED_TASKS, redact, validate_task, build_report
+from agent import ALLOWED_TASKS, TASK_COMMANDS, redact, validate_task, build_report
 
 
 class AgentSafetyTests(unittest.TestCase):
@@ -30,6 +30,19 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertFalse(validate_task("set_world_mode"))
         self.assertFalse(validate_task("shell"))
         self.assertFalse(validate_task("rm -rf /"))
+
+    def test_radio_collector_captures_engineermode_worldmode_events(self):
+        command = " ".join(TASK_COMMANDS["radio"])
+        self.assertIn("logcat -b all", command)
+        for marker in (
+            "mBandMode",
+            "checkWmCapab",
+            "setWorldModeWithBand",
+            "EPBSE",
+            "WorldMode",
+            "BandSelect",
+        ):
+            self.assertIn(marker, command)
 
     def test_report_has_schema_and_task_status(self):
         report = build_report("inventory", "ok", "device=begonia")

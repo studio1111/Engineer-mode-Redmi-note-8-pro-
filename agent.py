@@ -49,8 +49,12 @@ TASK_COMMANDS = {
     ],
     "radio": [
         RISH, "-c",
-        "logcat -b radio -d -t 3000 | grep -iE "
-        "'ATCI|RILMUXD|RilClient|WorldMode|BandSelect|LTE|EDGE|GSM|WCDMA|ServiceState|DataRegState|IMS|error|fail|denied' | tail -n 500"
+        "logcat -b all -d -t 5000 | grep -iE "
+        "'mBandMode|checkWmCapab|setWorldModeWithBand|EPBSE|Failed to query band|"
+        "WorldMode|BandSelect|ATCI|AT>|AT<|CME ERROR|"
+        "currentSignalStrengthWithWcdmaEcioInd|RILMUXD|RilClient|RtcRilClientController|"
+        "NetworkRegistrationInfo|DataRegState|ServiceState|LTE|WCDMA|IMS|error|fail|denied' "
+        "| tail -n 800"
     ],
     "connectivity": [
         RISH, "-c",
