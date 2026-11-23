@@ -1,0 +1,98 @@
+name: Audit official Redmi Note 8 Pro ROM
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-rom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Download official Xiaomi Global Recovery ROM
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p rom-audit/extracted
+          URL="https://bigota.d.miui.com/V12.5.8.0.RGGMIXM/miui_BEGONIAGlobal_V12.5.8.0.RGGMIXM_db66dbc998_11.0.zip"
+          EXPECTED_MD5="db66dbc998e52e2953311308b007bc51"
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 30 \
+            --output /tmp/begonia-global-rom.zip "$URL"
+          ACTUAL_MD5="$(md5sum /tmp/begonia-global-rom.zip | awk '{print $1}')"
+          printf 'Expected MD5: %s\nActual MD5:   %s\n' "$EXPECTED_MD5" "$ACTUAL_MD5" | tee rom-audit/checksum.txt
+          test "$ACTUAL_MD5" = "$EXPECTED_MD5"
+          echo "ROM download and MD5 verification succeeded." | tee rom-audit/status.txt
+
+      - name: Inventory package and extract modem firmware only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import pathlib
+          import zipfile
+
+          archive = pathlib.Path("/tmp/begonia-global-rom.zip")
+          out = pathlib.Path("rom-audit")
+          extracted = out / "extracted"
+          extracted.mkdir(parents=True, exist_ok=True)
+
+          modem_names = []
+          with zipfile.ZipFile(archive) as zf:
+              infos = sorted(zf.infolist(), key=lambda x: x.filename.lower())
+              with (out / "archive-inventory.tsv").open("w", encoding="utf-8") as f:
+                  f.write("uncompressed_size\tcompressed_size\tfilename\n")
+                  for info in infos:
+                      f.write(f"{info.file_size}\t{info.compress_size}\t{info.filename}\n")
+                      base = pathlib.PurePosixPath(info.filename).name.lower()
+                      blocked = any(x in base for x in ("nvram", "nvdata", "nvcfg", "protect", "persist"))
+                      is_modem = (base.startswith("md1") or "modem" in base)
+                      if info.is_dir() or blocked or not is_modem:
+                          continue
+                      # Extract only modem image files; never extract device-specific calibration partitions.
+                      target = extracted / pathlib.PurePosixPath(info.filename).name
+                      target.write_bytes(zf.read(info))
+                      modem_names.append((info.filename, target))
+
+          with (out / "modem-image-manifest.tsv").open("w", encoding="utf-8") as f:
+              f.write("archive_path\tbytes\tsha256\n")
+              for archive_name, path in modem_names:
+                  digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                  f.write(f"{archive_name}\t{path.stat().st_size}\t{digest}\n")
+
+          if not modem_names:
+              (out / "modem-extraction-status.txt").write_text(
+                  "No md1*/modem-named image was found in this recovery package. "
+                  "Review archive-inventory.tsv; do not infer that the ROM lacks modem firmware.\n",
+                  encoding="utf-8",
+              )
+          else:
+              (out / "modem-extraction-status.txt").write_text(
+                  f"Extracted {len(modem_names)} modem image file(s). "
+                  "No NVRAM/NVDATA/NVCFG/protect/persist data was extracted.\n",
+                  encoding="utf-8",
+              )
+          PY
+
+      - name: Record modem firmware strings when available
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            for f in rom-audit/extracted/*; do
+              [ -f "$f" ] || continue
+              echo "===== $(basename "$f") ====="
+              file "$f" || true
+              strings "$f" 2>/dev/null | grep -iE 'MOLY|MTK|MT6785|TC8|MD1|MODEM|RIL' | head -n 150 || true
+            done
+          } > rom-audit/modem-strings.txt
+
+      - name: Upload audit report and extracted modem images
+        uses: actions/upload-artifact@v4
+        with:
+          name: begonia-global-v12.5.8.0-rom-audit
+          path: rom-audit/
+          if-no-files-found: error
+          retention-days: 14
