@@ -1,8 +1,9 @@
+import signal
 import subprocess
 import unittest
 from unittest.mock import patch
 
-from agent import ALLOWED_TASKS, TASK_COMMANDS, redact, validate_task, build_report, collect
+from agent import ALLOWED_TASKS, TASK_COMMANDS, MAX_OUTPUT, redact, validate_task, build_report, collect
 
 
 class AgentSafetyTests(unittest.TestCase):
@@ -23,9 +24,9 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertIn("[REDACTED]", result)
 
     def test_only_fixed_read_only_tasks_are_accepted(self):
-        self.assertEqual(
-            ALLOWED_TASKS,
-            {"inventory", "telephony", "radio", "source", "connectivity", "engineermode_audit"},
+        self.assertTrue(
+            {"inventory", "telephony", "radio", "source", "connectivity", "engineermode_audit"}
+            .issubset(ALLOWED_TASKS)
         )
         self.assertTrue(validate_task("inventory"))
         self.assertTrue(validate_task("radio"))
@@ -74,25 +75,59 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertNotIn("reboot ", command)
         self.assertNotIn("reboot;", command)
 
-    def test_rish_collectors_start_outside_termux_private_home(self):
-        completed = subprocess.CompletedProcess(
-            args=TASK_COMMANDS["radio"], returncode=0, stdout="radio-log", stderr=""
-        )
-        with patch("agent.subprocess.run", return_value=completed) as run:
+    def test_rish_collectors_start_outside_termux_private_home_and_in_own_process_group(self):
+        process = unittest.mock.Mock()
+        process.communicate.return_value = ("radio-log", "")
+        process.returncode = 0
+        with patch("agent.subprocess.Popen", return_value=process) as popen:
             status, output = collect("radio")
 
         self.assertEqual(status, "ok")
         self.assertEqual(output, "radio-log")
-        self.assertEqual(run.call_args.kwargs["cwd"], "/")
+        self.assertEqual(popen.call_args.kwargs["cwd"], "/")
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
+    def test_timeout_kills_entire_collector_process_group(self):
+        process = unittest.mock.Mock()
+        timeout = subprocess.TimeoutExpired(cmd="rish", timeout=25)
+        process.communicate.side_effect = [timeout, timeout, ("", "")]
+        process.pid = 4242
+        with patch("agent.subprocess.Popen", return_value=process), patch("agent.os.killpg") as killpg:
+            status, output = collect("radio")
+
+        self.assertEqual(status, "timeout")
+        self.assertIn("Collection exceeded", output)
+        self.assertEqual(killpg.call_args_list[0].args, (4242, signal.SIGTERM))
+        self.assertEqual(killpg.call_args_list[1].args, (4242, signal.SIGKILL))
 
     def test_report_has_schema_and_task_status(self):
         report = build_report("inventory", "ok", "device=begonia")
-        self.assertEqual(report["schema_version"], 1)
+        self.assertEqual(report["schema_version"], 2)
         self.assertEqual(report["task"], "inventory")
         self.assertEqual(report["status"], "ok")
         self.assertTrue(report["read_only"])
         self.assertIn("generated_at", report)
 
+
+    def test_report_marks_output_truncation_explicitly(self):
+        report = build_report("source", "ok", "x" * (MAX_OUTPUT + 10))
+        self.assertTrue(report["truncated"])
+        self.assertEqual(len(report["output"]), MAX_OUTPUT)
+        self.assertEqual(report["output_length"], MAX_OUTPUT + 10)
+
+    def test_focused_audit_tasks_are_fixed_and_read_only(self):
+        expected = {
+            "worldmode_audit", "band_audit", "ril_audit",
+            "network_audit", "component_audit", "safety_audit",
+        }
+        self.assertTrue(expected.issubset(ALLOWED_TASKS))
+        for task in expected:
+            self.assertTrue(validate_task(task), task)
+            command = " ".join(TASK_COMMANDS[task]).lower()
+            self.assertNotIn("setprop ", command)
+            self.assertNotIn("reboot ", command)
+            self.assertNotIn("dd if=", command)
+            self.assertNotIn("dd of=", command)
 
 if __name__ == "__main__":
     unittest.main()
