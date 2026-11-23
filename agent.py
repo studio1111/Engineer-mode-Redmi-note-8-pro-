@@ -8,6 +8,7 @@ import json
 import os
 import re
 import secrets
+import signal
 import subprocess
 import sys
 import time
@@ -148,26 +149,43 @@ def collect(task: str) -> tuple[str, str]:
         raise ValueError("Task is not in the read-only allowlist")
     env = os.environ.copy()
     env.update(RISH_ENV)
+    cwd = "/" if TASK_COMMANDS[task][0] == RISH else str(ROOT)
+    process: subprocess.Popen[str] | None = None
     try:
-        completed = subprocess.run(
+        # A dedicated session lets timeout handling terminate the whole
+        # Rish/shell/grep pipeline, not just its parent process. Otherwise
+        # inherited stdout pipes can keep communicate() blocked indefinitely.
+        process = subprocess.Popen(
             TASK_COMMANDS[task],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=TIMEOUT_SECONDS,
-            check=False,
             env=env,
-            # Shizuku's shell UID cannot traverse Termux's private app-data
-            # directory. Rish inherits the caller's cwd, so start Rish tasks
-            # from the shared filesystem root instead.
-            cwd="/" if TASK_COMMANDS[task][0] == RISH else str(ROOT),
+            cwd=cwd,
+            start_new_session=True,
         )
+        try:
+            stdout, stderr = process.communicate(timeout=TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                stdout, stderr = process.communicate(timeout=3)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                stdout, stderr = process.communicate()
+            output = (stdout or "") + (stderr or "")
+            return "timeout", f"Collection exceeded {TIMEOUT_SECONDS} seconds\\n{output}"
     except FileNotFoundError as exc:
         return "unavailable", f"Required executable not found: {exc.filename}"
-    except subprocess.TimeoutExpired:
-        return "timeout", f"Collection exceeded {TIMEOUT_SECONDS} seconds"
-    output = (completed.stdout or "") + (completed.stderr or "")
-    if completed.returncode != 0:
-        return "error", f"exit_code={completed.returncode}\\n{output}"
+    output = (stdout or "") + (stderr or "")
+    if process.returncode != 0:
+        return "error", f"exit_code={process.returncode}\\n{output}"
     return "ok", output or "(no output)"
 
 
