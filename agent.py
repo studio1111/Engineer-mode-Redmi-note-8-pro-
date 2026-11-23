@@ -128,6 +128,10 @@ def collect(task: str) -> tuple[str, str]:
             timeout=TIMEOUT_SECONDS,
             check=False,
             env=env,
+            # Shizuku's shell UID cannot traverse Termux's private app-data
+            # directory. Rish inherits the caller's cwd, so start Rish tasks
+            # from the shared filesystem root instead.
+            cwd="/" if TASK_COMMANDS[task][0] == RISH else str(ROOT),
         )
     except FileNotFoundError as exc:
         return "unavailable", f"Required executable not found: {exc.filename}"
