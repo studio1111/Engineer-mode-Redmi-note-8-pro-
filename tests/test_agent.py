@@ -25,10 +25,11 @@ class AgentSafetyTests(unittest.TestCase):
     def test_only_fixed_read_only_tasks_are_accepted(self):
         self.assertEqual(
             ALLOWED_TASKS,
-            {"inventory", "telephony", "radio", "source", "connectivity"},
+            {"inventory", "telephony", "radio", "source", "connectivity", "engineermode_audit"},
         )
         self.assertTrue(validate_task("inventory"))
         self.assertTrue(validate_task("radio"))
+        self.assertTrue(validate_task("engineermode_audit"))
         self.assertFalse(validate_task("set_world_mode"))
         self.assertFalse(validate_task("shell"))
         self.assertFalse(validate_task("rm -rf /"))
@@ -52,6 +53,26 @@ class AgentSafetyTests(unittest.TestCase):
             "BandSelect",
         ):
             self.assertIn(marker, command)
+
+    def test_engineermode_audit_is_scoped_read_only_and_covers_component_flow(self):
+        command = " ".join(TASK_COMMANDS["engineermode_audit"])
+        for marker in (
+            "WorldModeUtil.java",
+            "WorldModeActivity.java",
+            "BandSelect.java",
+            "BandModeContent.java",
+            "ModemSwitch.java",
+            "RadioStateManager.java",
+            "EmRadioHidl.java",
+            "MtkRadioResponseBase.java",
+            "MtkRadioIndication.java",
+            "CROSS-COMPONENT REFERENCES",
+            "MANIFEST COMPONENTS",
+        ):
+            self.assertIn(marker, command)
+        self.assertNotIn("setprop", command)
+        self.assertNotIn("reboot ", command)
+        self.assertNotIn("reboot;", command)
 
     def test_rish_collectors_start_outside_termux_private_home(self):
         completed = subprocess.CompletedProcess(
