@@ -1,3 +1,4 @@
+import signal
 import subprocess
 import unittest
 from unittest.mock import patch
@@ -74,16 +75,30 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertNotIn("reboot ", command)
         self.assertNotIn("reboot;", command)
 
-    def test_rish_collectors_start_outside_termux_private_home(self):
-        completed = subprocess.CompletedProcess(
-            args=TASK_COMMANDS["radio"], returncode=0, stdout="radio-log", stderr=""
-        )
-        with patch("agent.subprocess.run", return_value=completed) as run:
+    def test_rish_collectors_start_outside_termux_private_home_and_in_own_process_group(self):
+        process = unittest.mock.Mock()
+        process.communicate.return_value = ("radio-log", "")
+        process.returncode = 0
+        with patch("agent.subprocess.Popen", return_value=process) as popen:
             status, output = collect("radio")
 
         self.assertEqual(status, "ok")
         self.assertEqual(output, "radio-log")
-        self.assertEqual(run.call_args.kwargs["cwd"], "/")
+        self.assertEqual(popen.call_args.kwargs["cwd"], "/")
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
+    def test_timeout_kills_entire_collector_process_group(self):
+        process = unittest.mock.Mock()
+        timeout = subprocess.TimeoutExpired(cmd="rish", timeout=25)
+        process.communicate.side_effect = [timeout, timeout, ("", "")]
+        process.pid = 4242
+        with patch("agent.subprocess.Popen", return_value=process), patch("agent.os.killpg") as killpg:
+            status, output = collect("radio")
+
+        self.assertEqual(status, "timeout")
+        self.assertIn("Collection exceeded", output)
+        self.assertEqual(killpg.call_args_list[0].args, (4242, signal.SIGTERM))
+        self.assertEqual(killpg.call_args_list[1].args, (4242, signal.SIGKILL))
 
     def test_report_has_schema_and_task_status(self):
         report = build_report("inventory", "ok", "device=begonia")
