@@ -2,7 +2,7 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from agent import ALLOWED_TASKS, TASK_COMMANDS, redact, validate_task, build_report, collect
+from agent import ALLOWED_TASKS, TASK_COMMANDS, MAX_OUTPUT, redact, validate_task, build_report, collect
 
 
 class AgentSafetyTests(unittest.TestCase):
@@ -93,6 +93,27 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertTrue(report["read_only"])
         self.assertIn("generated_at", report)
 
+
+    def test_report_marks_output_truncation_explicitly(self):
+        report = build_report("source", "ok", "x" * (MAX_OUTPUT + 10))
+        self.assertTrue(report["truncated"])
+        self.assertEqual(len(report["output"]), MAX_OUTPUT)
+        self.assertEqual(report["output_length"], MAX_OUTPUT + 10)
+
+    def test_focused_audit_tasks_are_fixed_and_read_only(self):
+        expected = {
+            "worldmode_audit", "band_audit", "ril_audit",
+            "network_audit", "component_audit", "safety_audit",
+        }
+        self.assertTrue(expected.issubset(ALLOWED_TASKS))
+        for task in expected:
+            self.assertTrue(validate_task(task), task)
+            command = " ".join(TASK_COMMANDS[task]).lower()
+            self.assertNotIn("setprop", command)
+            self.assertNotIn("nvram", command)
+            self.assertNotIn("nvdata", command)
+            self.assertNotIn("reboot", command)
+            self.assertNotIn("dd if=", command)
 
 if __name__ == "__main__":
     unittest.main()
