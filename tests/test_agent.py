@@ -1,6 +1,8 @@
+import subprocess
 import unittest
+from unittest.mock import patch
 
-from agent import ALLOWED_TASKS, TASK_COMMANDS, redact, validate_task, build_report
+from agent import ALLOWED_TASKS, TASK_COMMANDS, redact, validate_task, build_report, collect
 
 
 class AgentSafetyTests(unittest.TestCase):
@@ -43,6 +45,17 @@ class AgentSafetyTests(unittest.TestCase):
             "BandSelect",
         ):
             self.assertIn(marker, command)
+
+    def test_rish_collectors_start_outside_termux_private_home(self):
+        completed = subprocess.CompletedProcess(
+            args=TASK_COMMANDS["radio"], returncode=0, stdout="radio-log", stderr=""
+        )
+        with patch("agent.subprocess.run", return_value=completed) as run:
+            status, output = collect("radio")
+
+        self.assertEqual(status, "ok")
+        self.assertEqual(output, "radio-log")
+        self.assertEqual(run.call_args.kwargs["cwd"], "/")
 
     def test_report_has_schema_and_task_status(self):
         report = build_report("inventory", "ok", "device=begonia")
