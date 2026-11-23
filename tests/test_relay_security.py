@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = (ROOT / "supabase/migrations/202611230001_relay.sql").read_text()
+AUDIT_MIGRATION = (ROOT / "supabase/migrations/202611240001_read_only_audit_tasks_and_expiry.sql").read_text()
 EDGE = (ROOT / "supabase/functions/device-relay/index.ts").read_text()
 
 
@@ -32,6 +33,22 @@ class RelaySecurityTests(unittest.TestCase):
         self.assertNotIn("shell_command", EDGE)
         self.assertNotIn("exec(", EDGE)
         self.assertNotIn("Deno.Command", EDGE)
+
+    def test_database_allowlist_includes_every_fixed_read_only_audit_task(self):
+        expected = {
+            "inventory", "telephony", "radio", "source", "connectivity",
+            "engineermode_audit", "worldmode_audit", "band_audit",
+            "ril_audit", "network_audit", "component_audit", "safety_audit",
+        }
+        for task in expected:
+            with self.subTest(task=task):
+                self.assertIn(f"'{task}'", AUDIT_MIGRATION)
+        self.assertIn("check (task in (", AUDIT_MIGRATION)
+
+    def test_claim_function_expires_stale_pending_and_claimed_commands(self):
+        self.assertIn("status in ('pending', 'claimed')", AUDIT_MIGRATION)
+        self.assertIn("expires_at <= now()", AUDIT_MIGRATION)
+        self.assertIn("status = 'expired'", AUDIT_MIGRATION)
 
 
 if __name__ == "__main__":

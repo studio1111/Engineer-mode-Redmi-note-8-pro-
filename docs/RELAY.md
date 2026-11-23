@@ -1,6 +1,6 @@
 # Relay deployment notes
 
-The Edge Function intentionally disables gateway JWT verification because it authenticates each device using a high-entropy bearer token whose SHA-256 hash is stored in the private database. The function itself must be deployed with its custom authentication code intact.
+The Edge Function disables gateway JWT verification because it authenticates each device using a high-entropy bearer token whose SHA-256 hash is stored in the private database. The function itself must be deployed with its custom authentication code intact.
 
 Required platform-provided server secrets:
 - `SUPABASE_URL`
@@ -18,11 +18,20 @@ The local agent creates a random bearer token and stores it only on the phone. I
 
 ## Queueing a task
 
-Only use the exact allowlisted tasks:
+Only use these exact fixed read-only tasks:
 - `inventory`
 - `telephony`
 - `radio`
 - `source`
 - `connectivity`
+- `engineermode_audit`
+- `worldmode_audit`
+- `band_audit`
+- `ril_audit`
+- `network_audit`
+- `component_audit`
+- `safety_audit`
 
-Use a maximum two-minute expiry. Never enqueue shell text, SQL, arbitrary arguments, or modem-write operations.
+Use a maximum two-minute expiry. Never enqueue shell text, SQL, arbitrary arguments, or modem-write operations. The local agent independently checks the task against its fixed allowlist.
+
+Commands claimed by a device but not completed before expiry are marked expired on the next poll, so stale claims cannot remain stuck indefinitely.

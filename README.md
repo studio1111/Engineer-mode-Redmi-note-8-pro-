@@ -85,7 +85,7 @@ The relay runs as a Termux background process. Android battery management can st
 
 After a Supabase project is selected and ready:
 
-1. Apply `supabase/migrations/202611230001_relay.sql`.
+1. Apply all SQL migrations in `supabase/migrations/` in filename order, including `202611240001_read_only_audit_tasks_and_expiry.sql`.
 2. Deploy `supabase/functions/device-relay/index.ts` as `device-relay` with JWT verification disabled because the function performs its own per-device bearer-token authentication.
 3. Verify the database functions and Edge Function logs.
 4. Register the device using only the enrollment UUID and SHA-256 hash.
