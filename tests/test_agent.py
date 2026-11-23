@@ -71,7 +71,8 @@ class AgentSafetyTests(unittest.TestCase):
         ):
             self.assertIn(marker, command)
         self.assertNotIn("setprop", command)
-        self.assertNotIn("rebootModem", command)
+        self.assertNotIn("reboot ", command)
+        self.assertNotIn("reboot;", command)
 
     def test_rish_collectors_start_outside_termux_private_home(self):
         completed = subprocess.CompletedProcess(
