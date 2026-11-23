@@ -24,7 +24,7 @@ REPORT_DIR = ROOT / "reports"
 MAX_OUTPUT = 48_000
 TIMEOUT_SECONDS = 25
 POLL_SECONDS = 20
-ALLOWED_TASKS = {"inventory", "telephony", "radio", "source", "connectivity"}
+ALLOWED_TASKS = {"inventory", "telephony", "radio", "source", "connectivity", "engineermode_audit"}
 RISH_ENV = {
     "RISH_APPLICATION_ID": "com.termux",
     "MANAGER_APPLICATION_ID": "moe.shizuku.privileged.api",
@@ -64,6 +64,22 @@ TASK_COMMANDS = {
         "printf '===== CONNECTIVITY =====\\n'; dumpsys connectivity | "
         "grep -iE 'NetworkAgentInfo|TRANSPORT_CELLULAR|NetworkCapabilities|mNetworkInfo' | head -n 220; "
         "printf '\\n===== ACTIVE NETWORK =====\\n'; dumpsys netstats | head -n 80"
+    ],
+    "engineermode_audit": [
+        "sh", "-c",
+        "base=\"$HOME/em_decoded\"; eng=\"$base/sources/com/mediatek/engineermode\"; "
+        "if [ ! -d \"$eng\" ]; then echo 'SOURCE_NOT_FOUND: expected JADX sources under ~/em_decoded'; exit 0; fi; "
+        "echo '===== ENGINEERMODE MENU / COMPONENT INVENTORY ====='; "
+        "grep -RniE 'class .*Activity|class .*Fragment|class .*Receiver|class .*Service|setContentView|addPreferencesFromResource|PreferenceScreen' \"$eng\" 2>/dev/null | head -n 260; "
+        "echo '===== WORLD MODE AND BAND CONTROL FLOW ====='; "
+        "for f in \"$eng/WorldModeUtil.java\" \"$eng/worldmode/WorldModeActivity.java\" \"$eng/bandselect/BandSelect.java\" \"$eng/bandselect/BandModeContent.java\" \"$eng/bandselect/BandModeSimSelect.java\" \"$eng/worldphone/ModemSwitch.java\" \"$eng/RadioStateManager.java\" \"$eng/EmRadioHidl.java\" \"$eng/MtkRadioResponseBase.java\" \"$eng/MtkRadioIndication.java\"; do "
+        "if [ -f \"$f\" ]; then echo \"--- $f\"; grep -nE -C 3 'WorldMode|worldmode|modemType|storeModemType|rebootModem|setModemType|setWorldMode|BandSelect|BandMode|setBandMode|mBtn(Set|Reset)|setOnClickListener|onClick|RadioManager|setRadioPower|sendAtCommand|ATCI|AsyncResult|Message|Handler|notify|register' \"$f\" | head -n 150; fi; done; "
+        "echo '===== CROSS-COMPONENT REFERENCES ====='; "
+        "grep -RniE 'WorldModeUtil|setWorldModeWithBand|storeModemType|rebootModem|setModemType|BandModeContent|setBandModeGsm|setBandMode|ModemSwitch|RadioStateManager|EmRadioHidl' \"$eng\" 2>/dev/null | head -n 520; "
+        "echo '===== MANIFEST COMPONENTS AND PERMISSIONS ====='; "
+        "for m in \"$base/AndroidManifest.xml\" \"$base/resources/AndroidManifest.xml\"; do if [ -f \"$m\" ]; then grep -niE 'uses-permission|<activity|<service|<receiver|<provider|exported|permission' \"$m\" | head -n 260; fi; done; "
+        "echo '===== WORLD/BAND RESOURCE LINKS ====='; "
+        "for d in \"$base/res\" \"$base/resources/res\"; do if [ -d \"$d\" ]; then find \"$d\" -type f | grep -iE 'world|band|modem|radio' | head -n 180; fi; done"
     ],
     "source": [
         "sh", "-c",
