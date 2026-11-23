@@ -64,30 +64,30 @@ TASK_COMMANDS = {
     ],
     "source": [
         "sh", "-c",
-        "base=\\"$HOME/em_decoded\\"; eng=\\"$base/sources/com/mediatek/engineermode\\"; "
-        "if [ ! -d \\"$eng\\" ] && [ ! -d \\"$base/smali/com/mediatek/engineermode\\" ]; then "
+        "base=\"$HOME/em_decoded\"; eng=\"$base/sources/com/mediatek/engineermode\"; "
+        "if [ ! -d \"$eng\" ] && [ ! -d \"$base/smali/com/mediatek/engineermode\" ]; then "
         "echo 'SOURCE_NOT_FOUND: expected JADX sources or apktool smali under ~/em_decoded'; exit 0; fi; "
         "echo '===== WORLD/BAND SOURCE FILES ====='; "
-        "find \\"$base\\" -type f | grep -iE 'world.?mode|band.?select|modem|radio' | head -n 220; "
+        "find \"$base\" -type f | grep -iE 'world.?mode|band.?select|modem|radio' | head -n 220; "
         "echo '===== WORLD/BAND VALIDATION, LISTENERS AND MODEM CALLS ====='; "
         "grep -RniE -C 5 'storeModemType|rebootModem|setModemType|WorldMode|modemType|world.mode|setWorldMode|BandSelect|setBandModeGsm|mBtnSet|mBtnReset|setOnClickListener|onClick|ATCI|sendAtCommand' "
-        "\\"$base/sources/com/mediatek/engineermode\\" \\"$base/smali\\" \\"$base/smali_classes2\\" 2>/dev/null | head -n 1400; "
+        "\"$base/sources/com/mediatek/engineermode\" \"$base/smali\" \"$base/smali_classes2\" 2>/dev/null | head -n 1400; "
         "echo '===== MANIFEST PERMISSIONS/COMPONENTS ====='; "
-        "for manifest in \\"$base/AndroidManifest.xml\\" \\"$base/resources/AndroidManifest.xml\\"; do "
-        "if [ -f \\"$manifest\\" ]; then grep -niE 'uses-permission|activity|service|receiver|provider|exported|permission' \\"$manifest\\" | head -n 300; fi; done; "
+        "for manifest in \"$base/AndroidManifest.xml\" \"$base/resources/AndroidManifest.xml\"; do "
+        "if [ -f \"$manifest\" ]; then grep -niE 'uses-permission|activity|service|receiver|provider|exported|permission' \"$manifest\" | head -n 300; fi; done; "
         "echo '===== ENGINEERMODE RESOURCES ====='; "
-        "for resdir in \\"$base/res\\" \\"$base/resources/res\\"; do "
-        "if [ -d \\"$resdir\\" ]; then find \\"$resdir\\" -type f | grep -iE 'world|band|modem|radio' | head -n 300; fi; done"
+        "for resdir in \"$base/res\" \"$base/resources/res\"; do "
+        "if [ -d \"$resdir\" ]; then find \"$resdir\" -type f | grep -iE 'world|band|modem|radio' | head -n 300; fi; done"
     ],
 }
 
 SENSITIVE_PATTERNS = [
-    re.compile(r"(?i)\\bIMEI\\s*[:=]?\\s*[0-9]{14,16}\\b"),
-    re.compile(r"(?i)\\bIMSI\\s*[:=]?\\s*[0-9]{14,16}\\b"),
-    re.compile(r"(?i)\\bICCID\\s*[:=]?\\s*[0-9]{18,22}\\b"),
-    re.compile(r"(?i)\\b(?:MEID|ESN)\\s*[:=]?\\s*[0-9A-F-]{8,18}\\b"),
-    re.compile(r"(?i)\\b(?:phone|subscriber)\\s*(?:number|msisdn)\\s*[:=]?\\s*\\+?[0-9][0-9 -]{6,18}"),
-    re.compile(r"(?i)\\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|secret[_-]?key|service[_-]?role[_-]?key|password)\\s*[:=]\\s*[^\\s,;]+"),
+    re.compile(r"(?i)\bIMEI\s*[:=]?\s*[0-9]{14,16}\b"),
+    re.compile(r"(?i)\bIMSI\s*[:=]?\s*[0-9]{14,16}\b"),
+    re.compile(r"(?i)\bICCID\s*[:=]?\s*[0-9]{18,22}\b"),
+    re.compile(r"(?i)\b(?:MEID|ESN)\s*[:=]?\s*[0-9A-F-]{8,18}\b"),
+    re.compile(r"(?i)\b(?:phone|subscriber)\s*(?:number|msisdn)\s*[:=]?\s*\+?[0-9][0-9 -]{6,18}"),
+    re.compile(r"(?i)\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|secret[_-]?key|service[_-]?role[_-]?key|password)\s*[:=]\s*[^\s,;]+"),
     re.compile(r"(?<![0-9])(?:[0-9]{14,16}|[0-9]{19,22})(?![0-9])"),
 ]
 
