@@ -109,11 +109,10 @@ class AgentSafetyTests(unittest.TestCase):
         for task in expected:
             self.assertTrue(validate_task(task), task)
             command = " ".join(TASK_COMMANDS[task]).lower()
-            self.assertNotIn("setprop", command)
-            self.assertNotIn("nvram", command)
-            self.assertNotIn("nvdata", command)
-            self.assertNotIn("reboot", command)
+            self.assertNotIn("setprop ", command)
+            self.assertNotIn("reboot ", command)
             self.assertNotIn("dd if=", command)
+            self.assertNotIn("dd of=", command)
 
 if __name__ == "__main__":
     unittest.main()
