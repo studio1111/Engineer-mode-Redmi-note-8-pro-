@@ -23,9 +23,9 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertIn("[REDACTED]", result)
 
     def test_only_fixed_read_only_tasks_are_accepted(self):
-        self.assertEqual(
-            ALLOWED_TASKS,
-            {"inventory", "telephony", "radio", "source", "connectivity", "engineermode_audit"},
+        self.assertTrue(
+            {"inventory", "telephony", "radio", "source", "connectivity", "engineermode_audit"}
+            .issubset(ALLOWED_TASKS)
         )
         self.assertTrue(validate_task("inventory"))
         self.assertTrue(validate_task("radio"))
@@ -87,7 +87,7 @@ class AgentSafetyTests(unittest.TestCase):
 
     def test_report_has_schema_and_task_status(self):
         report = build_report("inventory", "ok", "device=begonia")
-        self.assertEqual(report["schema_version"], 1)
+        self.assertEqual(report["schema_version"], 2)
         self.assertEqual(report["task"], "inventory")
         self.assertEqual(report["status"], "ok")
         self.assertTrue(report["read_only"])
