@@ -33,6 +33,13 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertFalse(validate_task("shell"))
         self.assertFalse(validate_task("rm -rf /"))
 
+    def test_inventory_collects_both_worldmode_properties_read_only(self):
+        command = " ".join(TASK_COMMANDS["inventory"])
+        self.assertIn("getprop vendor.ril.active.md", command)
+        self.assertIn("getprop vendor.ril.nw.worldmode.activemode", command)
+        self.assertIn("WORLD MODE PROPERTIES", command)
+        self.assertNotIn("setprop", command)
+
     def test_radio_collector_captures_engineermode_worldmode_events(self):
         command = " ".join(TASK_COMMANDS["radio"])
         self.assertIn("logcat -b all", command)
