@@ -133,7 +133,7 @@ class AgentSafetyTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         start = (root / "start-relay.sh").read_text()
         supervisor = (root / "relay-supervisor.sh").read_text()
-        self.assertIn('relay-supervisor.sh "$RELAY_URL"', start)
+        self.assertIn('"$INSTALL_DIR/relay-supervisor.sh" "$RELAY_URL"', start)
         self.assertIn('relay.url', start)
         self.assertIn('while [ ! -f "$STOP_FILE" ]', supervisor)
         self.assertIn('python agent.py --relay --relay-url "$RELAY_URL"', supervisor)
@@ -144,7 +144,7 @@ class AgentSafetyTests(unittest.TestCase):
         boot = (root / "termux-boot" / "start-redmi-engineer-lab").read_text()
         installer = (root / "install-termux-boot.sh").read_text()
         self.assertIn('relay.url', boot)
-        self.assertIn('start-relay.sh "$RELAY_URL"', boot)
+        self.assertIn('"$INSTALL_DIR/start-relay.sh" "$RELAY_URL"', boot)
         self.assertIn('~/.termux/boot', installer)
 
 
