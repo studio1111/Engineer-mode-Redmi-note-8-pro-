@@ -145,7 +145,7 @@ class AgentSafetyTests(unittest.TestCase):
         installer = (root / "install-termux-boot.sh").read_text()
         self.assertIn('relay.url', boot)
         self.assertIn('"$INSTALL_DIR/start-relay.sh" "$RELAY_URL"', boot)
-        self.assertIn('~/.termux/boot', installer)
+        self.assertIn('$HOME/.termux/boot', installer)
 
 
 if __name__ == "__main__":
