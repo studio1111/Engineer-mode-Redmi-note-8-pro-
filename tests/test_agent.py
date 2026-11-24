@@ -1,6 +1,7 @@
 import signal
 import subprocess
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from agent import ALLOWED_TASKS, TASK_COMMANDS, MAX_OUTPUT, redact, validate_task, build_report, collect
@@ -108,7 +109,6 @@ class AgentSafetyTests(unittest.TestCase):
         self.assertTrue(report["read_only"])
         self.assertIn("generated_at", report)
 
-
     def test_report_marks_output_truncation_explicitly(self):
         report = build_report("source", "ok", "x" * (MAX_OUTPUT + 10))
         self.assertTrue(report["truncated"])
@@ -128,6 +128,25 @@ class AgentSafetyTests(unittest.TestCase):
             self.assertNotIn("reboot ", command)
             self.assertNotIn("dd if=", command)
             self.assertNotIn("dd of=", command)
+
+    def test_relay_start_uses_supervisor_and_persists_boot_url(self):
+        root = Path(__file__).resolve().parents[1]
+        start = (root / "start-relay.sh").read_text()
+        supervisor = (root / "relay-supervisor.sh").read_text()
+        self.assertIn('"$INSTALL_DIR/relay-supervisor.sh" "$RELAY_URL"', start)
+        self.assertIn('relay.url', start)
+        self.assertIn('while [ ! -f "$STOP_FILE" ]', supervisor)
+        self.assertIn('python agent.py --relay --relay-url "$RELAY_URL"', supervisor)
+        self.assertIn('restarting in', supervisor)
+
+    def test_termux_boot_entry_restarts_saved_relay_without_manual_url(self):
+        root = Path(__file__).resolve().parents[1]
+        boot = (root / "termux-boot" / "start-redmi-engineer-lab").read_text()
+        installer = (root / "install-termux-boot.sh").read_text()
+        self.assertIn('relay.url', boot)
+        self.assertIn('"$INSTALL_DIR/start-relay.sh" "$RELAY_URL"', boot)
+        self.assertIn('$HOME/.termux/boot', installer)
+
 
 if __name__ == "__main__":
     unittest.main()

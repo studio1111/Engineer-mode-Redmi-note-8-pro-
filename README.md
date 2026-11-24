@@ -79,7 +79,16 @@ Stop it with:
 bash stop-relay.sh
 ```
 
-The relay runs as a Termux background process. Android battery management can still suspend or kill Termux; unrestricted battery usage and a suitable Termux:Boot setup may be needed for persistent operation. The agent does not modify system power settings.
+The relay now runs under `relay-supervisor.sh`, which automatically restarts the worker after an unexpected exit with bounded backoff (5–60 seconds). The URL is stored locally with mode 0600.
+
+For automatic startup after a device reboot, install and open the official **Termux:Boot** add-on once, then run:
+
+```sh
+cd ~/RedmiEngineerLab
+bash install-termux-boot.sh
+```
+
+This installs `~/.termux/boot/start-redmi-engineer-lab`, which waits for Android networking and starts the saved relay URL. Android battery management can still suspend or kill Termux; set Termux battery usage to Unrestricted if Android offers that setting. The scripts do not alter system power settings or grant Shizuku permissions.
 
 ## Backend deployment
 
