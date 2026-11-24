@@ -1,0 +1,16 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -eu
+
+INSTALL_DIR="$HOME/RedmiEngineerLab"
+STATE_DIR="$HOME/.local/state/redmi-engineer-lab"
+URL_FILE="$STATE_DIR/relay.url"
+
+# Android may bring networking up after the boot receiver.
+sleep 20
+if [ ! -s "$URL_FILE" ]; then
+  echo "Relay URL missing; run start-relay.sh once from Termux."
+  exit 1
+fi
+
+RELAY_URL="$(cat "$URL_FILE")"
+exec bash "$INSTALL_DIR/start-relay.sh" "$RELAY_URL"
